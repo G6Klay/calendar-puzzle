@@ -1,0 +1,553 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>日历拼图</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@700;900&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: 照片里的桌面——左上计时器、右上黄色日期，中间激光雕刻木板，木块散放在旁边 */
+:root {
+  --table: #c9c0b2;
+  --table-line: rgba(90, 70, 45, .07);
+  --plate: #e6d3b0;
+  --plate-edge: #b48f5f;
+  --recess: #d0b68c;
+  --burn: #4b2b12;
+  --ink: #2f2318;
+  --ink-soft: #5b4a39;
+  --marker: #e0453b;
+  --gold: #f4d625;
+  --case: #f3f5f8;
+  --lcd: #c7cfc2;
+  --btn: #ecdcbc;
+  --f-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --f-lcd: "Share Tech Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background-color: var(--table);
+  background-image:
+    repeating-linear-gradient(180deg, transparent 0 239px, rgba(80, 60, 40, .16) 239px 241px),
+    repeating-linear-gradient(178deg, var(--table-line) 0 2px, transparent 2px 11px);
+  color: var(--ink);
+  font-family: var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 40px;
+  min-height: 100%;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+.top { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.timer {
+  background: var(--case); border-radius: 22px; padding: 12px 14px 10px;
+  box-shadow: 0 6px 14px rgba(40, 30, 20, .22), inset 0 -3px 0 rgba(0, 0, 0, .06);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.lcd {
+  background: var(--lcd); border-radius: 8px; padding: 4px 14px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, .25);
+  font-family: var(--f-lcd); font-size: 44px; line-height: 1; color: #1d211c;
+  font-variant-numeric: tabular-nums; letter-spacing: 2px;
+}
+.timer .keys { display: flex; gap: 14px; font-size: 12px; color: #333; letter-spacing: .1em; }
+.banner { text-align: right; line-height: 1.05; color: var(--gold); font-weight: 900;
+  text-shadow: 0 2px 0 #7a6212, 0 0 10px rgba(60, 40, 0, .25); }
+.banner .s { font-size: 28px; }
+.banner .b { font-size: clamp(34px, 7vw, 56px); text-wrap: balance; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.controls button, .controls .field {
+  font: 700 15px/1 var(--f-body); color: var(--burn);
+  background: var(--btn); border: 1.5px solid var(--plate-edge); border-radius: 9px;
+  padding: 9px 13px; box-shadow: 0 2px 0 var(--plate-edge); cursor: pointer;
+}
+.controls button:active { transform: translateY(2px); box-shadow: none; }
+.controls button:focus-visible, .controls input:focus-visible { outline: 3px solid var(--marker); outline-offset: 2px; }
+.controls .field { display: inline-flex; align-items: center; gap: 6px; cursor: default; padding: 5px 8px 5px 12px; }
+.controls input[type=date] { font: 700 15px var(--f-body); color: var(--burn); background: transparent; border: 0; }
+.controls .chk { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; color: var(--ink-soft); font-size: 14px; cursor: pointer; }
+.controls .sep { flex: 1 1 0; }
+
+.status { margin: 0; min-height: 1.5em; font-size: 16px; font-weight: 700; color: var(--ink); }
+.status.good { color: #2e6b1f; }
+.status.warn { color: #9a3b16; }
+
+.area { position: relative; width: 100%; user-select: none; -webkit-user-select: none; }
+#board { position: absolute; top: 0; display: block; filter: drop-shadow(0 8px 12px rgba(50, 35, 20, .3)); }
+.plate { fill: var(--plate); stroke: var(--plate-edge); stroke-width: 2; }
+.recess { fill: var(--recess); }
+.gridl { fill: none; stroke: rgba(75, 43, 18, .3); stroke-width: 2; }
+.lbl { fill: var(--burn); font-family: var(--f-body); font-weight: 900; text-anchor: middle; dominant-baseline: central; }
+.lbl.hi { fill: rgba(255, 247, 230, .6); }
+.tgt { fill: none; stroke: var(--marker); stroke-width: 5; stroke-dasharray: 14 9; opacity: 0; transition: opacity .2s; }
+.hint .tgt { opacity: 1; }
+.won .tgt { opacity: 1; stroke: none; fill: rgba(244, 214, 37, .5); animation: glow 1.3s ease-in-out infinite alternate; }
+@keyframes glow { from { fill-opacity: .25; } to { fill-opacity: .75; } }
+
+.piece {
+  position: absolute; left: 0; top: 0; pointer-events: none; touch-action: none;
+  transition: transform .16s ease-out;
+  filter: drop-shadow(0 1px 1.5px rgba(50, 30, 10, .45));
+}
+.piece.loose { filter: drop-shadow(0 4px 5px rgba(50, 30, 10, .35)); }
+.piece.dragging { transition: none; filter: drop-shadow(0 14px 14px rgba(40, 25, 10, .35)); }
+.area.solving .piece { transition: transform .7s cubic-bezier(.2, .8, .2, 1); }
+.piece svg { display: block; overflow: visible; }
+.piece .pf { pointer-events: visiblePainted; cursor: grab; }
+.piece.dragging .pf { cursor: grabbing; }
+.piece .pe { fill: none; stroke: #9a7344; stroke-width: 5; stroke-linecap: square; }
+.piece.sel .pe { stroke: var(--marker); stroke-width: 7; }
+
+.help { margin: 4px 0 0; font-size: 14px; line-height: 1.7; color: var(--ink-soft); max-width: 68ch; }
+.help b { color: var(--ink); }
+
+@media (max-width: 520px) {
+  .lcd { font-size: 32px; }
+  .banner .s { font-size: 20px; }
+  .controls button { padding: 8px 10px; font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .piece, .area.solving .piece { transition: none !important; }
+  .won .tgt { animation: none; fill-opacity: .55; }
+}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="timer" aria-label="计时器">
+      <div class="lcd" id="tm">00:00</div>
+      <div class="keys"><span>分</span><span>秒</span><span>开始/停止</span></div>
+    </div>
+    <div class="banner" aria-live="polite">
+      <div class="s" id="dLabel">今天</div>
+      <div class="b" id="dBig">10月29日</div>
+      <div class="b" id="dWeek">星期四</div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <label class="field" for="dateIn">日期 <input type="date" id="dateIn"></label>
+    <button id="btnToday" type="button">回到今天</button>
+    <button id="btnRot" type="button">↻ 旋转</button>
+    <button id="btnFlip" type="button">⇋ 翻面</button>
+    <span class="sep"></span>
+    <label class="chk" for="hintChk"><input type="checkbox" id="hintChk"> 标出目标格</label>
+    <button id="btnReset" type="button">重来</button>
+    <button id="btnSolve" type="button">看答案</button>
+  </div>
+
+  <p class="status" id="status" role="status"></p>
+
+  <div class="area" id="area">
+    <svg id="board" viewBox="0 0 800 945" aria-label="日历拼图木板"></svg>
+  </div>
+
+  <p class="help"><b>玩法：</b>把 10 块木块全部放进槽里，只露出当天的「月」「日」「星期」三格。
+    拖动木块移动，靠近格子会自动吸附；<b>轻点</b>木块顺时针旋转，<b>右键</b>或 Shift+点击翻面。
+    选中的木块也可以用上面的按钮，或键盘 <b>R</b> 旋转、<b>F</b> 翻面。</p>
+</div>
+
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const area = $('#area'), boardSvg = $('#board'), statusEl = $('#status'), dateIn = $('#dateIn');
+const WEEK = '日一二三四五六';
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------- 板面：7 列 × 8 行，右上缺两格，最后一行只有星期四~六 ----------
+function isValid(r, c) {
+  if (r < 0 || c < 0 || c > 6 || r > 7) return false;
+  if (r <= 1) return c <= 5;
+  if (r <= 6) return true;
+  return c >= 4;
+}
+function label(r, c) {
+  if (r <= 1) return [(r * 6 + c + 1) + '月'];
+  if (r <= 5) return [((r - 2) * 7 + c + 1) + '日'];
+  if (r === 6 && c <= 2) return [(29 + c) + '日'];
+  return ['星期', WEEK[r === 6 ? c - 3 : c]];
+}
+function targetCells(dt) {
+  const m = dt.getMonth() + 1, d = dt.getDate(), w = dt.getDay();
+  return [
+    [Math.floor((m - 1) / 6), (m - 1) % 6],
+    d <= 28 ? [2 + Math.floor((d - 1) / 7), (d - 1) % 7] : [6, d - 29],
+    w <= 3 ? [6, 3 + w] : [7, w],
+  ];
+}
+const ALL_CELLS = [];
+for (let r = 0; r < 8; r++) for (let c = 0; c < 7; c++) if (isValid(r, c)) ALL_CELLS.push([r, c]);
+
+// ---------- 木块：3 个四格 + 7 个五格，共 47 格 ----------
+const DEFS = [
+  [[0,0],[0,1],[0,2],[0,3]],          // 一字
+  [[0,2],[0,3],[1,0],[1,1],[1,2]],    // N
+  [[0,0],[0,1],[1,1],[2,1],[3,1]],    // 长 L
+  [[0,0],[0,1],[0,2],[1,0],[1,1]],    // P
+  [[0,0],[0,1],[1,1],[2,1],[2,2]],    // Z
+  [[1,0],[1,1],[1,2],[0,2],[2,2]],    // T
+  [[0,0],[1,0],[2,0],[2,1],[2,2]],    // V
+  [[0,0],[0,1],[1,0],[2,0],[2,1]],    // U
+  [[0,1],[0,2],[1,0],[1,1]],          // S
+  [[0,0],[0,1],[1,1],[2,1]],          // 短 L
+];
+const k = (r, c) => r + ',' + c;
+function norm(cells) {
+  const mr = Math.min(...cells.map(x => x[0])), mc = Math.min(...cells.map(x => x[1]));
+  return cells.map(([r, c]) => [r - mr, c - mc]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+}
+const rotCW = cells => norm(cells.map(([r, c]) => [c, -r]));
+const flipH = cells => norm(cells.map(([r, c]) => [r, -c]));
+const dims = cells => ({ w: Math.max(...cells.map(x => x[1])) + 1, h: Math.max(...cells.map(x => x[0])) + 1 });
+const sig = cells => cells.map(x => x.join(',')).join(';');
+function orientations(cells) {
+  const out = [], seen = new Set();
+  let cur = norm(cells);
+  for (let f = 0; f < 2; f++) {
+    for (let i = 0; i < 4; i++) {
+      if (!seen.has(sig(cur))) { seen.add(sig(cur)); out.push(cur); }
+      cur = rotCW(cur);
+    }
+    cur = flipH(cur);
+  }
+  return out;
+}
+function wide(cells) { cells = norm(cells); const d = dims(cells); return d.h > d.w ? rotCW(cells) : cells; }
+
+// ---------- 状态 ----------
+const pieces = DEFS.map((cells, i) => ({
+  i, cells: wide(cells), x: 0, y: 0, placed: false,
+  color: `hsl(${33 + (i % 3) * 2}, ${40 + (i % 4) * 3}%, ${78 + (i * 7) % 6}%)`,
+  el: null, svg: null,
+}));
+let selected = null, zTop = 10;
+let C = 60, ox = 0, oy = 0, areaW = 0, areaH = 0, side = null;
+let tray = { x: 0, y: 9, w: 8 };
+let target = new Date(), won = false, revealed = false;
+let t0 = 0, acc = 0, running = false;
+
+// ---------- 木板 SVG ----------
+const PLATE = 'M18 0H652Q670 0 670 18V247Q670 275 698 275H782Q800 275 800 293V927Q800 945 782 945H18Q0 945 0 927V18Q0 0 18 0Z';
+const RECESS = 'M50 95H650V295H750V895H450V795H50Z';
+function buildBoard() {
+  let s = `<defs>
+    <pattern id="grain" patternUnits="userSpaceOnUse" width="400" height="80">
+      <g fill="none" stroke="rgba(110,70,30,.10)" stroke-width="2">
+        <path d="M0 12C100 4 220 22 400 12"/><path d="M0 34C140 42 260 26 400 34"/>
+        <path d="M0 58C90 50 300 68 400 58"/><path d="M0 71C150 76 250 66 400 71" stroke-width="1"/>
+      </g>
+    </pattern>
+    <filter id="inset" x="-5%" y="-5%" width="110%" height="110%">
+      <feComponentTransfer in="SourceAlpha" result="inv"><feFuncA type="table" tableValues="1 0"/></feComponentTransfer>
+      <feGaussianBlur in="inv" stdDeviation="6" result="b"/>
+      <feOffset in="b" dx="4" dy="6" result="o"/>
+      <feFlood flood-color="#3a2410" flood-opacity=".55"/>
+      <feComposite in2="o" operator="in" result="sh"/>
+      <feComposite in="sh" in2="SourceAlpha" operator="in" result="ish"/>
+      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="ish"/></feMerge>
+    </filter>
+  </defs>
+  <path class="plate" d="${PLATE}"/><path d="${PLATE}" fill="url(#grain)"/>
+  <path class="recess" d="${RECESS}" filter="url(#inset)"/><path d="${RECESS}" fill="url(#grain)" opacity=".6"/>`;
+  const txt = (x, y, t, size, extra = '') =>
+    `<text class="lbl hi" x="${x}" y="${y + 2}" font-size="${size}" ${extra}>${t}</text>` +
+    `<text class="lbl" x="${x}" y="${y}" font-size="${size}" ${extra}>${t}</text>`;
+  s += txt(350, 50, '日 历 拼 图', 36, 'letter-spacing="6"');
+  s += txt(250, 846, '每天都要拼一拼', 40);
+  for (const [r, c] of ALL_CELLS) {
+    const x = 50 + c * 100, y = 95 + r * 100, L = label(r, c);
+    s += `<rect class="gridl" x="${x}" y="${y}" width="100" height="100"/>`;
+    if (L.length === 1) s += txt(x + 50, y + 50, L[0], L[0].length > 2 ? 30 : 33);
+    else s += txt(x + 50, y + 30, L[0], 27) + txt(x + 50, y + 70, L[1], 30);
+  }
+  s += '<g id="tg"></g>';
+  boardSvg.innerHTML = s;
+}
+
+// ---------- 布局 ----------
+const BW = 8, BH = 9.45, GAP = 0.6, TW = 9.2;
+function packList(list) {
+  let x = tray.x, y = tray.y, rowH = 0;
+  const G = 0.35;
+  for (const p of list) {
+    const d = dims(p.cells);
+    if (x > tray.x && x + d.w > tray.x + tray.w + 1e-6) { x = tray.x; y += rowH + G; rowH = 0; }
+    p.x = x; p.y = y; p.placed = false;
+    x += d.w + G; rowH = Math.max(rowH, d.h);
+  }
+  return y + rowH - tray.y;
+}
+function layout() {
+  const W = area.clientWidth;
+  const cs = W / (BW + GAP + TW);
+  const nowSide = cs >= 44;
+  const cell = nowSide ? Math.min(64, cs) : Math.min(64, W / BW);
+  C = Math.floor(cell);
+  const totalW = (nowSide ? BW + GAP + TW : BW) * C;
+  const left = Math.max(0, (W - totalW) / 2);
+  ox = left + 0.5 * C; oy = 0.95 * C;
+  tray = nowSide ? { x: BW + GAP - 0.5, y: -0.6, w: TW } : { x: -0.5, y: BH - 0.95 + 0.5, w: BW };
+  // 预留托盘高度：按初始摆法计算
+  const ghost = DEFS.map(c => ({ cells: wide(c) }));
+  const trayH = packList(ghost);
+  areaW = W;
+  areaH = Math.max(BH * C, oy + (tray.y + trayH + 0.4) * C);
+  area.style.height = areaH + 'px';
+  boardSvg.style.left = left + 'px';
+  boardSvg.setAttribute('width', BW * C);
+  boardSvg.setAttribute('height', BH * C);
+  const changed = side !== null && side !== nowSide;
+  side = nowSide;
+  if (changed) packList(pieces.filter(p => !p.placed));
+  pieces.forEach(p => { if (!p.placed) clamp(p); render(p); });
+}
+function clamp(p) {
+  const d = dims(p.cells);
+  p.x = Math.min(Math.max(p.x, -ox / C), (areaW - ox) / C - d.w);
+  p.y = Math.min(Math.max(p.y, -oy / C), (areaH - oy) / C - d.h);
+}
+
+// ---------- 木块渲染 ----------
+function buildPiece(p) {
+  const d = dims(p.cells), has = new Set(p.cells.map(([r, c]) => k(r, c)));
+  let fill = '', edge = '';
+  for (const [r, c] of p.cells) {
+    const X = c * 100, Y = r * 100;
+    fill += `M${X} ${Y}h100v100h-100z`;
+    if (!has.has(k(r - 1, c))) edge += `M${X} ${Y}h100`;
+    if (!has.has(k(r + 1, c))) edge += `M${X} ${Y + 100}h100`;
+    if (!has.has(k(r, c - 1))) edge += `M${X} ${Y}v100`;
+    if (!has.has(k(r, c + 1))) edge += `M${X + 100} ${Y}v100`;
+  }
+  p.svg.setAttribute('viewBox', `0 0 ${d.w * 100} ${d.h * 100}`);
+  p.svg.innerHTML = `<path class="pf" d="${fill}" fill="${p.color}"/>` +
+    `<path d="${fill}" fill="url(#grain)" pointer-events="none"/><path class="pe" d="${edge}"/>`;
+}
+function render(p) {
+  const d = dims(p.cells);
+  p.svg.setAttribute('width', d.w * C);
+  p.svg.setAttribute('height', d.h * C);
+  p.el.style.transform = `translate(${ox + p.x * C}px, ${oy + p.y * C}px)`;
+  p.el.classList.toggle('loose', !p.placed);
+  p.el.classList.toggle('sel', p === selected);
+}
+function select(p) {
+  const prev = selected; selected = p;
+  if (prev) render(prev);
+  if (p) { p.el.style.zIndex = ++zTop; render(p); }
+}
+
+// ---------- 吸附与放置 ----------
+function occupied(except) {
+  const s = new Set();
+  for (const q of pieces) if (q !== except && q.placed)
+    for (const [r, c] of q.cells) s.add(k(q.y + r, q.x + c));
+  return s;
+}
+function canPlace(p, gx, gy) {
+  const occ = occupied(p);
+  return p.cells.every(([r, c]) => isValid(gy + r, gx + c) && !occ.has(k(gy + r, gx + c)));
+}
+function snap(p) {
+  const gx = Math.round(p.x), gy = Math.round(p.y);
+  if (canPlace(p, gx, gy)) { p.x = gx; p.y = gy; p.placed = true; }
+  else { p.placed = false; clamp(p); }
+}
+function transformPiece(p, fn, anim) {
+  const d0 = dims(p.cells), cx = p.x + d0.w / 2, cy = p.y + d0.h / 2, was = p.placed;
+  p.cells = fn(p.cells);
+  const d = dims(p.cells);
+  p.x = cx - d.w / 2; p.y = cy - d.h / 2; p.placed = false;
+  if (was) {
+    const bx = Math.round(p.x), by = Math.round(p.y);
+    for (const [dx, dy] of [[0,0],[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]]) {
+      if (canPlace(p, bx + dx, by + dy)) { p.x = bx + dx; p.y = by + dy; p.placed = true; break; }
+    }
+  }
+  if (!p.placed) clamp(p);
+  buildPiece(p); render(p);
+  if (!reduceMotion) p.svg.animate([{ transform: anim }, { transform: 'none' }], { duration: 180, easing: 'ease-out' });
+  startTimer(); changed();
+}
+const rotatePiece = p => transformPiece(p, rotCW, 'rotate(-90deg)');
+const flipPiece = p => transformPiece(p, flipH, 'scaleX(-1)');
+
+// ---------- 拖拽 ----------
+function attach(p) {
+  p.el = document.createElement('div');
+  p.el.className = 'piece';
+  p.el.style.zIndex = ++zTop;
+  p.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  p.el.appendChild(p.svg);
+  area.appendChild(p.el);
+  p.el.addEventListener('contextmenu', e => e.preventDefault());
+  p.el.addEventListener('pointerdown', e => {
+    if (!e.target.classList.contains('pf')) return;
+    e.preventDefault();
+    select(p);
+    if (e.button === 2) { flipPiece(p); return; }
+    if (e.button !== 0) return;
+    const sx = e.clientX, sy = e.clientY, px = p.x, py = p.y, id = e.pointerId;
+    let moved = false;
+    const move = ev => {
+      if (ev.pointerId !== id) return;
+      if (!moved) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+        moved = true; p.placed = false; p.el.classList.add('dragging'); startTimer();
+      }
+      p.x = px + (ev.clientX - sx) / C; p.y = py + (ev.clientY - sy) / C;
+      clamp(p); render(p);
+    };
+    const up = ev => {
+      if (ev.pointerId !== id) return;
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+      p.el.classList.remove('dragging');
+      if (!moved) { ev.shiftKey ? flipPiece(p) : rotatePiece(p); return; }
+      snap(p); render(p); changed();
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+  });
+}
+
+// ---------- 计时 ----------
+const elapsed = () => acc + (running ? performance.now() - t0 : 0);
+function fmt(ms) { const s = Math.floor(ms / 1000); return String(Math.min(99, Math.floor(s / 60))).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); }
+function startTimer() { if (!running && !won && !revealed) { running = true; t0 = performance.now(); } }
+function stopTimer() { if (running) { acc += performance.now() - t0; running = false; } }
+setInterval(() => { $('#tm').textContent = fmt(elapsed()); }, 250);
+
+// ---------- 目标日期与胜负 ----------
+const ymd = dt => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+const dateText = dt => `${dt.getMonth() + 1}月${dt.getDate()}日 星期${WEEK[dt.getDay()]}`;
+function setTarget(dt) {
+  target = dt; dateIn.value = ymd(dt);
+  $('#dLabel').textContent = ymd(dt) === ymd(new Date()) ? '今天' : '目标';
+  $('#dBig').textContent = `${dt.getMonth() + 1}月${dt.getDate()}日`;
+  $('#dWeek').textContent = '星期' + WEEK[dt.getDay()];
+  $('#tg').innerHTML = targetCells(dt).map(([r, c]) =>
+    `<rect class="tgt" x="${54 + c * 100}" y="${99 + r * 100}" width="92" height="92" rx="6"/>`).join('');
+  won = false; revealed = false; acc = 0; running = false;
+  changed();
+}
+function say(text, cls = '') { statusEl.textContent = text; statusEl.className = 'status ' + cls; }
+function changed() {
+  const n = pieces.filter(p => p.placed).length;
+  boardSvg.classList.remove('won');
+  if (n < pieces.length) {
+    won = false;
+    say(`已放入 ${n} / 10 块。让 ${dateText(target)} 这三格露出来就成功。`);
+    return;
+  }
+  const occ = occupied(null);
+  const open = ALL_CELLS.filter(([r, c]) => !occ.has(k(r, c)));
+  const want = new Set(targetCells(target).map(([r, c]) => k(r, c)));
+  if (open.length === 3 && open.every(([r, c]) => want.has(k(r, c)))) {
+    boardSvg.classList.add('won');
+    if (revealed) { say(`这是 ${dateText(target)} 的一种解法。点「重来」自己再拼一遍。`, 'good'); return; }
+    if (!won) { won = true; stopTimer(); }
+    say(`拼好了！${dateText(target)}，用时 ${fmt(elapsed())}。`, 'good');
+  } else {
+    say(`全部放满了，但露出的是「${open.map(([r, c]) => label(r, c).join('')).join('」「')}」，不是目标日期。`, 'warn');
+  }
+}
+
+// ---------- 求解（看答案） ----------
+function solve(dt) {
+  const block = new Set(targetCells(dt).map(([r, c]) => k(r, c)));
+  const need = ALL_CELLS.filter(([r, c]) => !block.has(k(r, c)));
+  const free = Array.from({ length: 8 }, (_, r) => Array.from({ length: 7 }, (_, c) => isValid(r, c) && !block.has(k(r, c))));
+  const ors = DEFS.map(orientations), used = ors.map(() => false), sol = [];
+  function rec(idx) {
+    while (idx < need.length && !free[need[idx][0]][need[idx][1]]) idx++;
+    if (idx === need.length) return true;
+    const [r, c] = need[idx];
+    for (let i = 0; i < ors.length; i++) {
+      if (used[i]) continue;
+      for (const o of ors[i]) {
+        const dr = r - o[0][0], dc = c - o[0][1];
+        if (!o.every(([a, b]) => { const R = a + dr, Cc = b + dc; return R >= 0 && R < 8 && Cc >= 0 && Cc < 7 && free[R][Cc]; })) continue;
+        o.forEach(([a, b]) => { free[a + dr][b + dc] = false; });
+        used[i] = true; sol.push({ i, cells: o, x: dc, y: dr });
+        if (rec(idx + 1)) return true;
+        sol.pop(); used[i] = false;
+        o.forEach(([a, b]) => { free[a + dr][b + dc] = true; });
+      }
+    }
+    return false;
+  }
+  return rec(0) ? sol : null;
+}
+function animateAll(fn) {
+  area.classList.add('solving');
+  fn();
+  setTimeout(() => area.classList.remove('solving'), 750);
+}
+function showAnswer() {
+  const sol = solve(target);
+  if (!sol) { say('这个日期没有找到解。', 'warn'); return; }
+  revealed = true; stopTimer(); select(null);
+  animateAll(() => sol.forEach(s => {
+    const p = pieces[s.i];
+    p.cells = s.cells; p.x = s.x; p.y = s.y; p.placed = true;
+    buildPiece(p); render(p);
+  }));
+  changed();
+}
+function resetPieces() {
+  won = false; revealed = false; acc = 0; running = false; select(null);
+  animateAll(() => {
+    pieces.forEach(p => { p.cells = wide(DEFS[p.i]); buildPiece(p); });
+    packList(pieces);
+    pieces.forEach(render);
+  });
+  changed();
+}
+
+// ---------- 事件 ----------
+const needSel = fn => () => selected ? fn(selected) : say('先点一下要操作的木块。', 'warn');
+$('#btnRot').addEventListener('click', needSel(rotatePiece));
+$('#btnFlip').addEventListener('click', needSel(flipPiece));
+$('#btnReset').addEventListener('click', resetPieces);
+$('#btnSolve').addEventListener('click', showAnswer);
+$('#btnToday').addEventListener('click', () => setTarget(new Date()));
+$('#hintChk').addEventListener('change', e => boardSvg.classList.toggle('hint', e.target.checked));
+dateIn.addEventListener('change', () => {
+  const [y, m, d] = dateIn.value.split('-').map(Number);
+  if (y && m && d) setTarget(new Date(y, m - 1, d));
+});
+addEventListener('keydown', e => {
+  if (!selected || e.target.tagName === 'INPUT') return;
+  if (e.key === 'r' || e.key === 'R') rotatePiece(selected);
+  if (e.key === 'f' || e.key === 'F') flipPiece(selected);
+});
+addEventListener('resize', layout);
+area.addEventListener('pointerdown', e => { if (e.target === area || e.target.closest('#board')) select(null); });
+
+// ---------- 启动 ----------
+function start(data) {
+  buildBoard();
+  pieces.forEach(p => { attach(p); buildPiece(p); });
+  layout();
+  packList(pieces);
+  const snap0 = data && data.pieces;
+  if (snap0 && snap0.length === pieces.length) {
+    snap0.forEach((s, i) => { Object.assign(pieces[i], { cells: s.cells, x: s.x, y: s.y, placed: s.placed }); buildPiece(pieces[i]); });
+  }
+  pieces.forEach(render);
+  let dt = new Date();
+  if (data && data.date) { const [y, m, d] = data.date.split('-').map(Number); dt = new Date(y, m - 1, d); }
+  setTarget(dt);
+  if (data && data.elapsed) acc = data.elapsed;
+}
+window.claude?.hot?.snapshot?.(() => ({
+  pieces: pieces.map(p => ({ cells: p.cells, x: p.x, y: p.y, placed: p.placed })),
+  date: dateIn.value, elapsed: elapsed(),
+}));
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+window.__calendarPuzzle = { solve, targetCells };
+})();
+</script>
